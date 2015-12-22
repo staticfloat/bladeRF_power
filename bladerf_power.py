@@ -18,12 +18,14 @@ Options:
   -n --num-buffers=<nb>    Number of transfer buffers [default: 16].
   -t --num-transfers=<nt>  Number of transfers [default: 16].
   -l --num-samples=<ns>    Numper of samples per transfer buffer [default: 8192].
-  -g --lna-gain=<g>        Set LNA gain [default: LNA_GAIN_MAX]
-  -o --rx-vga1=<g>         Set vga1 gain [default: 0]
-  -w --rx-vga2=<g>         Set vga2 gain [default: 0]
-
+  -g --lna-gain=<g>        Set LNA gain [default: LNA_GAIN_BYPASS]
+  -o --rx-vga1=<g>         Set vga1 gain [default: RXVGA1_GAIN_MIN]
+  -w --rx-vga2=<g>         Set vga2 gain [default: RXVGA2_GAIN_MIN]
   -P --num-workers=<p>     Set number of FFT workers [default: 2]
   -e --exit-timer=<et>     Set amount of time before automatic exit [default: 0]
+  -W --window-type=<wt>    Set window type [default: hann]
+  --demean                 Demean signal before taking FFT [default: True]
+  -z                       Compress output with gzip on-the-fly [default: False]
 """
 import sys
 import bladeRF
@@ -79,7 +81,11 @@ def floatish(x):
 def intish(x):
     return int(floatish(x))
 
-
+def int_or_attr(x):
+    try:
+        return int(x)
+    except:
+        return getattr(bladeRF, x)
 
 ################################################################################
 ## DATA ANALYSIS
@@ -88,42 +94,52 @@ import datetime, sys
 from multiprocessing import Process, Manager, Pool
 import Queue
 
-def file_worker(q_file, outfile):
-    f = open(outfile, 'w')
-    while True:
-        try:
-            data = q_file.get(True, .1)
-            if data == "I'm sorry dave, it's time to die":
-                break
-            print "Got something to write!"
-            sys.stdout.flush()
-            f.write(data)
-        except Queue.Empty:
-            pass
-        except KeyboardInterrupt:
-            break
+def file_worker(q_file, outfile, compress):
+    import subprocess
+    import os
+    if compress:
+        f = subprocess.Popen("gzip -9 -c > %s"%(outfile), shell=True, stdin=subprocess.PIPE, preexec_fn=os.setpgrp).stdin
+    else:
+        f = open(outfile, 'w')
 
-def start_worker_pool(num_workers, outfile):
+    try:
+        while True:
+            try:
+                data = q_file.get(True, .1)
+                if data == "I'm sorry dave, it's time to die":
+                    break
+                f.write(data)
+            except Queue.Empty:
+                pass
+    except KeyboardInterrupt:
+        pass
+
+    f.close()
+    print "Gracefully exited file_worker"
+
+def start_worker_pool(num_workers, outfile, compress):
     pool = Pool(processes=num_workers+1)
     q_file = Manager().Queue()
-    file_process = Process(target=file_worker, args=(q_file, outfile))
+    file_process = Process(target=file_worker, args=(q_file, outfile, compress))
     file_process.start()
     return pool, file_process, q_file
 
 def stop_worker_pool(pool, file_process, q_file):
-    print "Killing worker pool..."
+    print "Closing worker pool..."
     try:
-        pool.close()
+        pool.terminate()
     except:
         print "pool.close() failed"
         pass
 
+    print "Joining worker pool..."
     try:
         pool.join()
     except:
         print "pool.join() failed"
         pass
 
+    print "Joining file process..."
     try:
         q_file.put("I'm sorry dave, it's time to die")
         file_process.join()
@@ -135,16 +151,17 @@ def db(x):
     from numpy import log10, abs
     return 20*log10(abs(x))
 
-def analyze_view(data, center_freq, bandwidth, end_freq, timestamp, q_file):
+def analyze_view(data, window_func, demean, center_freq, bandwidth, end_freq, timestamp, q_file):
     from numpy.fft import fft, fftshift
-    print "Got something to analyze!"
-    sys.stdout.flush()
 
     # Convert data from sc16 into complex data
     data = data[::2] + 1j*data[1::2]
 
+    if demean:
+        data = data - mean(data)
+
     # Take FFT of this data
-    DATA = fftshift(fft(data))
+    DATA = fftshift(fft(data * window_func(len(data))))
 
     # Find start/end frequencies that we get from this FFT
     start_freq = center_freq - bandwidth/2
@@ -157,24 +174,57 @@ def analyze_view(data, center_freq, bandwidth, end_freq, timestamp, q_file):
 
     # Prepare data for CSV-ification
     datestr = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d, %H:%M:%S')
-    csv_str = "%s, %d, %d, %.2f, %d"%(datestr, start_freq, end_freq, len(data), num_bins)
+    csv_str = "%s, %d, %d, %.2f, %d, "%(datestr, start_freq, end_freq, bandwidth/len(data), len(data))
 
     csv_str += ", ".join(["%.2f"%(x) for x in db(DATA[:num_bins])]) + "\n"
 
     # Send csv_str to file_worker
     q_file.put(csv_str)
-    print "Finished processing %d bins, sending out for writing"%(num_bins)
     sys.stdout.flush()
 
 
+################################################################################
+## RX CALLBACK
+################################################################################
+
+# The receiver callback, which fills up queued_data, and sends it on its merry way
+def rx_callback(device, stream, meta_data, samples, num_samples, user_data):
+    data = user_data['data']
+    data_idx = user_data['data_idx']
+    fft_len = user_data['fft_len']
+    q_data = user_data['q_data']
+    in_data = fromstring(stream.current_as_buffer(), dtype=int16)
+
+    # Are we supposed to quit?
+    if user_data['running'] == False:
+        return None
+
+    # Are we full already?  Then let's just keep on keeping on
+    if data_idx == fft_len:
+        return stream.current()
+
+    if num_samples*2 + data_idx < fft_len*2:
+        # Are we only partially filled?  Then fill in and return
+        data[data_idx:num_samples*2 + data_idx] = in_data
+        user_data['data_idx'] += num_samples*2
+        return stream.next()
+    else:
+        # Have we filled completely?  Then take what we need from this buffer, and discard the rest
+        data[data_idx:] = in_data[0:(fft_len*2 - data_idx)]
+        user_data['data_idx'] = fft_len
+        q_data.put(fft_len)
+        return stream.next()
 
 
 ################################################################################
 ## MAIN LOOP
 ################################################################################
 
-from time import time, sleep
 def main():
+    from time import time, sleep
+    import threading
+    from Queue import Queue
+    import scipy.signal
     args = get_args()
     device = bladeRF.Device(args['--device'])
     device.rx.enabled = True
@@ -185,12 +235,12 @@ def main():
     freq_arg = args['<lower:upper:bin_width>']
     start_freq, end_freq, bin_width = [floatish(x) for x in freq_arg.split(':')]
     num_views = ceil((end_freq - start_freq)/bandwidth)
-    fft_len = int(bandwidth/bin_width)
+    fft_len = int(ceil(bandwidth/bin_width))
     freqs = (start_freq + bandwidth/2) + bandwidth * arange(num_views)
 
-    device.lna_gain = getattr(bladeRF, args['--lna-gain'])
-    device.rx.vga1 = int(args['--rx-vga1'])
-    device.rx.vga2 = int(args['--rx-vga2'])
+    device.lna_gain = int_or_attr(args['--lna-gain'])
+    device.rx.vga1 = int_or_attr(args['--rx-vga1'])
+    device.rx.vga2 = int_or_attr(args['--rx-vga2'])
 
     num_buffers = int(args['--num-buffers'])
     num_samples = int(args['--num-samples'])
@@ -198,58 +248,68 @@ def main():
 
     # Start FFT worker pool
     num_workers = int(args['--num-workers'])
+    window_func = getattr(scipy.signal, args['--window-type'])
+    demean = bool(args['--demean'])
     outfile = args['--file']
-    pool, file_process, q_file = start_worker_pool(num_workers, outfile)
+    compress = bool(args['-z'])
+    if compress and outfile[-3:] != '.gz':
+        outfile += '.gz'
+    pool, file_process, q_file = start_worker_pool(num_workers, outfile, compress)
 
-    # The receiver callback, which fills up queued_data, and sends it on its merry way
-    def rx_callback(device, stream, meta_data, samples, num_samples, user_data):
-        data = user_data['data']
-        idx = user_data['idx']
-        in_data = fromstring(stream.current_as_buffer(), dtype=int16)
+    # Timing stuffage
+    start_time = time()
+    curr_time = start_time
+    exit_timer = intish(args['--exit-timer'])
 
-        if num_samples*2 + idx < fft_len*2:
-            # Are we only partially filled?  Then fill in and return
-            data[idx:num_samples*2 + idx] = in_data
-            user_data['idx'] += num_samples*2
-            #print 'Wrote %d samples'%(num_samples*2)
-            return stream.next()
-        else:
-            # Have we filled completely?  Then take what we need from this buffer, and move along
-            data[idx:] = in_data[0:(fft_len*2 - idx)]
-            #print 'Wrote %d samples and filled her all up (%d)'%((fft_len*2 - idx), fft_len*2)
-            return None
-
-
+    # This is the thread that runs the stream.  So exciting, la
+    def run_stream(stream):
+        stream.run()
 
     try:
-        # We'll use the same timestamp for all frequencies in a single run
-        start_time = time()
-        curr_time = start_time
-        exit_timer = floatish(args['--exit-timer'])
+        q_data = Queue()
+        rx_data = {
+            'data': empty(fft_len*2, dtype=int16),
+            'data_idx': 0,
+            'fft_len': fft_len,
+            'q_data': q_data,
+            'running': True
+        }
+
+        # Initialize device.rx.frequency, then start the stream doing its thing
+        device.rx.frequency = freqs[0]
+        stream = device.rx.stream(rx_callback, num_buffers, bladeRF.FORMAT_SC16_Q11, num_samples, num_transfers, user_data=rx_data)
+        threading.Thread(target=run_stream, args=(stream,)).start()
+
+        # Now zoom through frequencies like it's your day off
+        freq_idx = 0
         while curr_time - start_time <= exit_timer:
-            data = empty(fft_len*2, dtype=int16)
-            rx_data = {
-                'data': data,
-                'idx': 0,
-            }
+            samples_received = q_data.get()
 
-            stream = device.rx.stream(rx_callback, num_buffers, bladeRF.FORMAT_SC16_Q11, num_samples, num_transfers, user_data=rx_data)
-            for center_idx in freqs:
-                device.rx.frequency = center_idx
-                stream.run()
+            # Now that we have the data, apply it to the pool
+            args = (rx_data['data'], window_func, demean, device.rx.frequency, device.rx.bandwidth, end_freq, curr_time, q_file)
+            pool.apply_async(analyze_view, args)
 
-                # Now that we have all the data, apply it to the pool and move on
-                args = (data, device.rx.frequency, device.rx.bandwidth, end_freq, curr_time, q_file)
-                pool.apply_async(analyze_view, args)
-                sleep(0.15)
+            # If not, move on to the next frequency
+            freq_idx = (freq_idx + 1)%len(freqs)
+            device.rx.frequency = freqs[freq_idx]
+            rx_data['data_idx'] = 0
+            if freq_idx == 0:
+                curr_time = time()
 
-            # Update timestamp
-            curr_time = time()
-
+            total_space = 40
+            num_space = int((total_space - 1)*freq_idx/len(freqs))
+            tct = time()
+            status_line = "[" + " "*num_space + "." + " "*(total_space - num_space - 1) + "]"
+            status_line += " %.1fs/%.1f%%\r"%(tct - start_time, min(100*(tct - start_time)/exit_timer, 100))
+            sys.stdout.write(status_line)
+            sys.stdout.flush()
     except KeyboardInterrupt:
-        stream.join()
+        pass
     finally:
+        print # Clear out the status_line stuffage
+        rx_data['running'] = False
         stop_worker_pool(pool, file_process, q_file)
+        print "Done stopping the worker pool!"
 
     print "done!"
 

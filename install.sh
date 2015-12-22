@@ -13,7 +13,13 @@ if [[ "$1" == "build" ]]; then
 
 	# Install pybladeRF
 	git clone https://github.com/staticfloat/pybladeRF.git
-	(cd pybladeRF; git checkout sf/Q11; python setup.py install)
+	(cd pybladeRF; python setup.py install)
+
+	# Download heatmap.py
+	if [[ ! -f heatmap.py ]]; then
+		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o heatmap.py
+		chmod +x ./heatmap.py
+	fi
 elif [[ "$1" == "clean" ]]; then
 	rm -rf pybladeRF build *.pyc
 else
@@ -22,6 +28,4 @@ else
 	echo "    build:  Build all prerequisites"
 	echo "    clean:  Clean all compiled files"
 fi
-
-
 
