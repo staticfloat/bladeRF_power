@@ -24,7 +24,7 @@ if [[ "$1" == "build" ]]; then
 
 	# Install pybladeRF
 	git clone https://github.com/staticfloat/pybladeRF.git
-	(cd pybladeRF; python setup.py install)
+	(cd pybladeRF; git pull; python setup.py install)
 
 	# Download heatmap.py
 	if [[ ! -f heatmap.py ]]; then

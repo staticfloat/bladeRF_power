@@ -18,11 +18,11 @@ Options:
   -n --num-buffers=<nb>    Number of transfer buffers [default: 16].
   -t --num-transfers=<nt>  Number of transfers [default: 16].
   -l --num-samples=<ns>    Numper of samples per transfer buffer [default: 8192].
-  -g --lna-gain=<g>        Set LNA gain [default: LNA_GAIN_BYPASS]
+  -g --lna-gain=<g>        Set LNA gain [default: LNA_GAIN_MAX]
   -o --rx-vga1=<g>         Set vga1 gain [default: RXVGA1_GAIN_MIN]
   -w --rx-vga2=<g>         Set vga2 gain [default: RXVGA2_GAIN_MIN]
   -P --num-workers=<p>     Set number of FFT workers [default: 2]
-  -e --exit-timer=<et>     Set amount of time before automatic exit [default: 0]
+  -e --exit-timer=<et>     Set capture time (example: 5h23m2s) [default: 0]
   -W --window-type=<wt>    Set window type [default: hann]
   --demean                 Demean signal before taking FFT [default: True]
   -z                       Compress output with gzip on-the-fly [default: False]
@@ -86,6 +86,25 @@ def int_or_attr(x):
         return int(x)
     except:
         return getattr(bladeRF, x)
+
+def timeish(x):
+    # First off, if this is just an integer with no suffixes, then return it!
+    try:
+        return int(x)
+    except:
+        pass
+
+    time_units = {'d':24*60*60, 'h':60*60, 'm':60, 's':1}
+    if x[-1] in time_units:
+        j = len(x) - 2
+        while isdigit(x[j-1]) and j > 0:
+            j -= 1
+        val = time_units[x[-1]] * intish(x[j:-1])
+        if j > 0:
+            return val + timeish(x[:j])
+        else:
+            return val
+    return 0
 
 ################################################################################
 ## DATA ANALYSIS
@@ -226,7 +245,14 @@ def main():
     from Queue import Queue
     import scipy.signal
     args = get_args()
-    device = bladeRF.Device(args['--device'])
+    try:
+        device = bladeRF.Device(args['--device'])
+    except:
+        if args['--device'] == '':
+            print "ERROR: No bladeRF devices available!"
+        else:
+            print "ERROR: Could not open bladeRF device %s"%(args['--device'])
+        return
     device.rx.enabled = True
     bandwidth = intish(args['--bandwidth'])
     device.rx.bandwidth = bandwidth
@@ -234,9 +260,17 @@ def main():
 
     freq_arg = args['<lower:upper:bin_width>']
     start_freq, end_freq, bin_width = [floatish(x) for x in freq_arg.split(':')]
-    num_views = ceil((end_freq - start_freq)/bandwidth)
+    start_freq = max(start_freq, bladeRF.FREQUENCY_MIN)
+    end_freq = max(start_freq, bladeRF.FREQUENCY_MAX)
+
+    num_freqs = ceil((end_freq - start_freq)/bandwidth)
     fft_len = int(ceil(bandwidth/bin_width))
-    freqs = (start_freq + bandwidth/2) + bandwidth * arange(num_views)
+    freqs = (start_freq + bandwidth/2) + bandwidth * arange(num_freqs)
+    # Clamp freqs because we may attempt to overstep our bounds due to the ceil
+    # above when calculating num_freqs.  This is okay, usually, except when we
+    # exceed FREQUENCY_MAX.
+    if freqs[-1] > bladeRF.FREQUENCY_MAX:
+        freqs[-1] = bladeRF.FREQUENCY_MAX
 
     device.lna_gain = int_or_attr(args['--lna-gain'])
     device.rx.vga1 = int_or_attr(args['--rx-vga1'])
@@ -259,7 +293,7 @@ def main():
     # Timing stuffage
     start_time = time()
     curr_time = start_time
-    exit_timer = intish(args['--exit-timer'])
+    exit_timer = timeish(args['--exit-timer'])
 
     # This is the thread that runs the stream.  So exciting, la
     def run_stream(stream):
