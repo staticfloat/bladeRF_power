@@ -13,4 +13,4 @@ $ ./heatmap.py output.csv output.png
 
 Note that wide, dense sweeps of the spectrum such as the one described above can take a lot of diskspace; use `-z` to gzip-on-the-fly to save those precious, precious bytes.  As an anecdotal example, the above command generates a 1.1GB .csv file which compresses down to a 300MB .csv.gz file.  Either way, `heatmap.py` takes about 10 minutes to crank through that beauty on my machine.
 
-Note that if you see a bunch of scary, strong lines every 28MHz, this probably means that you need to [calibrate your bladeRF](https://github.com/Nuand/bladeRF/wiki/DC-offset-and-IQ-Imbalance-Correction).
+Note that if you see a bunch of scary, strong lines every 28MHz, this probably means that you need to [calibrate your bladeRF](https://github.com/Nuand/bladeRF/wiki/DC-offset-and-IQ-Imbalance-Correction).  Also try adding the `--demean` option to `bladerf_power.py`.

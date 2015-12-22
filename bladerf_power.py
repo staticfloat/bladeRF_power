@@ -24,7 +24,7 @@ Options:
   -P --num-workers=<p>     Set number of FFT workers [default: 2]
   -e --exit-timer=<et>     Set capture time (example: 5h23m2s) [default: 0]
   -W --window-type=<wt>    Set window type [default: hann]
-  --demean                 Demean signal before taking FFT [default: True]
+  --demean                 Demean signal before taking FFT
   -z                       Compress output with gzip on-the-fly [default: False]
 """
 import sys
@@ -283,7 +283,7 @@ def main():
     # Start FFT worker pool
     num_workers = int(args['--num-workers'])
     window_func = getattr(scipy.signal, args['--window-type'])
-    demean = bool(args['--demean'])
+    demean = args['--demean']
     outfile = args['--file']
     compress = bool(args['-z'])
     if compress and outfile[-3:] != '.gz':
