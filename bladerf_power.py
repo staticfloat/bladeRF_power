@@ -261,7 +261,7 @@ def main():
     freq_arg = args['<lower:upper:bin_width>']
     start_freq, end_freq, bin_width = [floatish(x) for x in freq_arg.split(':')]
     start_freq = max(start_freq, bladeRF.FREQUENCY_MIN)
-    end_freq = max(start_freq, bladeRF.FREQUENCY_MAX)
+    end_freq = min(start_freq, bladeRF.FREQUENCY_MAX)
 
     num_freqs = ceil((end_freq - start_freq)/bandwidth)
     fft_len = int(ceil(bandwidth/bin_width))

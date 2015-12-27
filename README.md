@@ -7,10 +7,10 @@ To install easily, run `./install.sh build`. I tried to get this to work inside 
 
 Example usage (after installation):
 ```
-$ ./bladerf_power.py 300M:3.8G:10k -e 1000 -f output.csv
+$ ./bladerf_power.py 300M:3.7G:10k -e 4h -f output.csv
 $ ./heatmap.py output.csv output.png
 ```
 
-Note that wide, dense sweeps of the spectrum such as the one described above can take a lot of diskspace; use `-z` to gzip-on-the-fly to save those precious, precious bytes.  As an anecdotal example, the above command generates a 1.1GB .csv file which compresses down to a 300MB .csv.gz file.  Either way, `heatmap.py` takes about 10 minutes to crank through that beauty on my machine.
+Note that wide, dense sweeps of the spectrum such as the one described above can take a lot of diskspace; use `-z` to gzip-on-the-fly to save those precious, precious bits.  As an anecdotal example, the above command generates a 5.6GB .csv file which compresses down to a 1.6GB .csv.gz file.  Either way, `heatmap.py` takes over two hours to crank through that beauty on my machine.
 
 Note that if you see a bunch of scary, strong lines every 28MHz, this probably means that you need to [calibrate your bladeRF](https://github.com/Nuand/bladeRF/wiki/DC-offset-and-IQ-Imbalance-Correction).  Also try adding the `--demean` option to `bladerf_power.py`.
