@@ -1,42 +1,43 @@
 #!/bin/bash
 
-if [[ "$1" == "build" ]]; then
-	echo "NOTE: This script will install pybladeRF and libbladeRF globally."
-	read -r -p "Is this okay? [y/N] " response
-	case $response in
-		[yY][eE][sS]|[yY])
-			;;
-		*)
-			exit 0
-			;;
-	esac
+INSTALL_PREFIX="$(pwd)/prefix"
+CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DCMAKE_BUILD_TYPE=Debug"
+mkdir -p "$INSTALL_PREFIX"
 
-	# Install libbladeRF
-	if [[ $(uname -s) == "Darwin" ]]; then
-		if [[ -z $(which brew) ]]; then
-			echo "brew not found, blithely assuming you have already installed libbladerf appropriately!"
-		else
-			brew install libbladerf
-		fi
-	else
-		echo "I don't know how to install libbladerf on this system, blithely assuming you have already installed it!"
+if [[ "$1" == "build" ]]; then
+	# Install libbladeRF from source
+	if [[ ! -d bladeRF ]]; then
+		echo "Downloading bladeRF source..."
+		git clone https://github.com/Nuand/bladeRF.git
+	fi
+	(cd bladeRF; git pull)
+
+	# Clear out prefix, if it's not some global place
+	if [[ "$INSTALL_PREFIX" == "$(pwd)/prefix" ]]; then
+		rm -rf prefix
 	fi
 
-	# Install pybladeRF
-	git clone https://github.com/staticfloat/pybladeRF.git
-	(cd pybladeRF; git pull; python setup.py install)
+	# Build libbladeRF, if we need to
+	mkdir -p build/bladeRF
+	(cd build/bladeRF; cmake ../../bladeRF/host $CMAKE_FLAGS && make install)
+
+	# Build bladeRF_power
+	mkdir -p build/bladeRF_power
+	(cd build/bladeRF_power; cmake ../../ $CMAKE_FLAGS && make install)
 
 	# Download heatmap.py
-	if [[ ! -f heatmap.py ]]; then
-		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o heatmap.py
-		chmod +x ./heatmap.py
-	fi
+	#if [[ ! -f heatmap.py ]]; then
+	#	curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o heatmap.py
+	#	chmod +x ./heatmap.py
+	#fi
 elif [[ "$1" == "clean" ]]; then
-	rm -rf pybladeRF build *.pyc
+	if [[ "$INSTALL_PREFIX" == "$(pwd)/prefix" ]]; then
+		rm -rf prefix
+	fi
+	rm -rf build bladeRF heatmap.py Vera.ttf
 else
 	echo "Usage: $0 [command]"
 	echo "Where command is one of the following:"
 	echo "    build:  Build all prerequisites"
 	echo "    clean:  Clean all compiled files"
 fi
-
