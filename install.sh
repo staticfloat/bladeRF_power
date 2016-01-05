@@ -1,10 +1,13 @@
 #!/bin/bash
 
-INSTALL_PREFIX="$(pwd)/prefix"
-CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX -DCMAKE_BUILD_TYPE=Debug"
-mkdir -p "$INSTALL_PREFIX"
+PREFIX="$(pwd)/prefix"
+CMAKE_DFLAGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Debug"
+CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release"
+mkdir -p "$PREFIX"
 
 if [[ "$1" == "build" ]]; then
+	echo "Installing into $PREFIX..."
+
 	# Install libbladeRF from source
 	if [[ ! -d bladeRF ]]; then
 		echo "Downloading bladeRF source..."
@@ -13,7 +16,7 @@ if [[ "$1" == "build" ]]; then
 	(cd bladeRF; git pull)
 
 	# Clear out prefix, if it's not some global place
-	if [[ "$INSTALL_PREFIX" == "$(pwd)/prefix" ]]; then
+	if [[ "$PREFIX" == "$(pwd)/prefix" ]]; then
 		rm -rf prefix
 	fi
 
@@ -22,16 +25,21 @@ if [[ "$1" == "build" ]]; then
 	(cd build/bladeRF; cmake ../../bladeRF/host $CMAKE_FLAGS && make install)
 
 	# Build bladeRF_power
-	mkdir -p build/bladeRF_power
-	(cd build/bladeRF_power; cmake ../../ $CMAKE_FLAGS && make install)
+	mkdir -p build/bladeRF_power_debug build/bladeRF_power_release
+	(cd build/bladeRF_power_debug; cmake ../../ $CMAKE_DFLAGS && make install)
+	(cd build/bladeRF_power_release; cmake ../../ $CMAKE_FLAGS && make install)
 
 	# Download heatmap.py
-	#if [[ ! -f heatmap.py ]]; then
-	#	curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o heatmap.py
-	#	chmod +x ./heatmap.py
-	#fi
+	if [[ ! -f ./heatmap.py ]]; then
+		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o ./heatmap.py
+		chmod +x ./heatmap.py
+	fi
+
+	if [[ ! -f "$PREFIX/bin/heatmap.py" ]]; then
+		ln -s "$(pwd)/heatmap.py" "$PREFIX/bin/heatmap.py"
+	fi
 elif [[ "$1" == "clean" ]]; then
-	if [[ "$INSTALL_PREFIX" == "$(pwd)/prefix" ]]; then
+	if [[ "$PREFIX" == "$(pwd)/prefix" ]]; then
 		rm -rf prefix
 	fi
 	rm -rf build bladeRF heatmap.py Vera.ttf
