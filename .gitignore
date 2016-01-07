@@ -3,5 +3,6 @@ build/
 prefix/
 Vera.ttf
 heatmap.py
+flatten.py
 
 .DS_Store
