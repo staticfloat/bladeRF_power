@@ -12,3 +12,7 @@ TODO
 ====
 
 * Force a quick-tune recalibration once an hour or so
+
+* Deal with hardware problems by closing then reopening the device, live.
+
+* Get larger frequency margins by calibrating and inverting antialiasing filter
