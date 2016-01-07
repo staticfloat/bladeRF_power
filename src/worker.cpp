@@ -190,6 +190,8 @@ void * worker(void * arg)
             } else
                 pthread_mutex_unlock(&integration_mutex);
 
+            if( buffer.freeable )
+                free(buffer.data);
         } else {
             // Sleep a little if we didn't have anything to process, waiting for
             // the next bit of data, so that we're not casually burning the CPU

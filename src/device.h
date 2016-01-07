@@ -5,10 +5,19 @@
 #include <pthread.h>
 
 struct data_capture {
+    // The actual data to be analyzed
     int16_t * data;
+
+    // What frequency and integration index is this data capture?
     unsigned short freq_idx;
     unsigned int integration_idx;
+
+    // What timepoint did this frequency sweep start at?
     struct timeval scan_time;
+
+    // Is this data freeable?  (multiple data_captures may share a single
+    // underlying buffer, so only the very first data_capture will be freeable)
+    bool freeable;
 };
 
 struct device_data_struct {

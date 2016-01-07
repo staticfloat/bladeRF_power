@@ -36,6 +36,9 @@ if [[ "$1" == "build" ]] || [[ "$1" == "build/" ]]; then
 	if [[ ! -f ./heatmap.py ]]; then
 		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o ./heatmap.py
 		chmod +x ./heatmap.py
+
+		echo "Patching heatmap.py to allow fractional timestamps..."
+		sed -i "" "s/fromtimestamp(int(s))/fromtimestamp(float(s))/g" heatmap.py
 	fi
 
 	if [[ ! -f ./flatten.py ]]; then
@@ -54,7 +57,7 @@ elif [[ "$1" == "clean" ]]; then
 	if [[ "$PREFIX" == "$(pwd)/prefix" ]]; then
 		rm -rf prefix
 	fi
-	rm -rf build bladeRF heatmap.py Vera.ttf
+	rm -rf build bladeRF heatmap.py flatten.py Vera.ttf
 else
 	echo "Usage: $0 [command]"
 	echo "Where command is one of the following:"

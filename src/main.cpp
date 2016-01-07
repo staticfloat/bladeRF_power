@@ -20,9 +20,9 @@ void sigint_handler(int dummy)
     sigaction(SIGINT, &old_sigint_action, NULL);
 }
 
-#define STATUS_LINE_LEN     80
-#define STATUS_LINE_BINS    62
-void print_status_line(unsigned short freq_idx)
+#define STATUS_LINE_LEN     100
+#define STATUS_LINE_BINS    64
+void print_status_line(unsigned short freq_idx, unsigned int ms_elapsed)
 {
     char status_line[STATUS_LINE_LEN+1];
     status_line[0] = '[';
@@ -62,7 +62,20 @@ void print_status_line(unsigned short freq_idx)
     status_line[offset++] = 'H';
     status_line[offset++] = 'z';
 
-    offset += sprintf(status_line + offset, " Q: %4lu", device_data.queued_buffers.size());
+    // Print out how many queued buffers are waiting to be processed
+    offset += snprintf(status_line + offset, STATUS_LINE_LEN - offset,
+                       " Q: %4lu", device_data.queued_buffers.size());
+
+    // Print out how many seconds/minutes/hours have passed
+    if( opts.exit_timer > 0 ) {
+        float pct = MIN(ms_elapsed*100.0/opts.exit_timer, 100.0f);
+        offset += snprintf(status_line + offset, STATUS_LINE_LEN - offset,
+                           "  T: %.1fs/%5.1f%%", ms_elapsed/1000.0, pct);
+    }
+    else {
+        offset += snprintf(status_line + offset, STATUS_LINE_LEN - offset,
+                           "  T: %.1fs/\u221E", ms_elapsed/1000.0);
+    }
 
     while( offset < STATUS_LINE_LEN-1 )
         status_line[offset++] = ' ';
@@ -116,9 +129,10 @@ int main(int argc, char ** argv)
             }
         }
 
-        // Update status_line 10 times a second
-        if( msdiff(tv, tv_status) > 100 ) {
-            print_status_line(freq_idx);
+        // Update status_line a maximum of 20 times a second
+        if( msdiff(tv, tv_status) > 50 ) {
+            print_status_line(freq_idx, msdiff(tv, tv_start));
+            tv_status = tv;
         }
 
         // Receive buffers of data
@@ -155,7 +169,8 @@ int main(int argc, char ** argv)
                     buffer + idx*2*opts.fft_len,
                     freq_idx,
                     integration_idx,
-                    tv_freq
+                    tv_freq,
+                    idx == 0
                 };
                 device_data.queued_buffers.push(blah);
 

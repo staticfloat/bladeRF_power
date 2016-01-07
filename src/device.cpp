@@ -180,11 +180,14 @@ int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
                              &meta, opts.timeout_ms);
 
     // Record meta.timestamp + 1ms so that we skip over tuning times.
-    device_data.last_buffer_timestamp = meta.timestamp + opts.samplerate/1000;
+    device_data.last_buffer_timestamp = meta.timestamp; // + opts.samplerate/1000;
 
     if( status != 0 ) {
-        ERROR("bladerf_sync_rx(dev, buffer, %d, meta, %d) failed: %s\n",
-              num_buffs*opts.fft_len, opts.timeout_ms, bladerf_strerror(status));
+        // Squelch BLADERF_ERR_TIME_PAST errors if we aren't in a verbose mood
+        if( status != BLADERF_ERR_TIME_PAST || opts.verbosity >= 1 ) {
+            ERROR("bladerf_sync_rx(dev, buffer, %d, meta, %d) failed: %s\n",
+                  num_buffs*opts.fft_len, opts.timeout_ms, bladerf_strerror(status));
+        }
         free(data);
         return NULL;
     }

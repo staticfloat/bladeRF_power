@@ -37,7 +37,7 @@ void usage()
     printf("  -i --integration-time=<t>  Time to integrate over to reduce noise in FFT.\n");
     printf("                             Supports time suffixes, [default: bin_width/bandwidth]\n");
     printf("  -b --bandwidth=<bw>        Capture bandwidth [default: BLADERF_BANDWIDTH_MAX].\n");
-    printf("  -M --filter-margin=<fm>    Anti-aliasing filter margin [default: .85]. This value\n");
+    printf("  -M --filter-margin=<fm>    Anti-aliasing filter margin [default: .55]. This value\n");
     printf("                             is combined with bandwidth to view only a portion of\n");
     printf("                             the captured signal to combat leaky anti-aliasing\n");
     printf("                             filters. Actual useful signal bandwidth is fm*bw/2.\n");
@@ -282,7 +282,7 @@ void parse_options(int argc, char ** argv)
     // Set defaults for everything that didn't get an explicit value:
     DEFAULT(opts.verbosity, 0);
     DEFAULT(opts.samplerate, BLADERF_BANDWIDTH_MAX);
-    DEFAULT(opts.filter_margin, 0.85);
+    DEFAULT(opts.filter_margin, 0.55);
     DEFAULT(opts.window_name, strdup("hamming"));
     DEFAULT(opts.lna, BLADERF_LNA_GAIN_MAX);
     DEFAULT(opts.rxvga1, BLADERF_RXVGA1_GAIN_MIN);
