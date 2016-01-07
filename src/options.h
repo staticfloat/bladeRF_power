@@ -6,7 +6,7 @@ struct opts_struct {
 
     // The start/end frequencies for our capture, as well as the bin width
     unsigned int start_freq, end_freq;
-    float bin_width;
+    double bin_width;
 
     // The frequencies we will tune to
     unsigned int * freqs;

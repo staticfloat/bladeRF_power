@@ -9,6 +9,7 @@
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
+#include <stdio.h>
 
 static pthread_t * threads;
 static pthread_mutex_t fftw_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -36,7 +37,7 @@ double db(double x)
 
 double abs(fftw_complex x)
 {
-    return x[0]*x[0] + x[1]*x[1];
+    return sqrt(x[0]*x[0] + x[1]*x[1]);
 }
 
 bool get_next_buffer(struct data_capture * buffer)
@@ -60,7 +61,8 @@ struct integration_buffer * get_integration_buffer(unsigned short freq_idx,
 {
     int ib_idx = -1;
     for( int idx = 0; idx < integration_buffers.size(); ++idx ) {
-        if( integration_buffers[idx]->freq_idx == freq_idx ) {
+        struct integration_buffer * ib = integration_buffers[idx];
+        if( ib->freq_idx == freq_idx && ib->num_integrations < opts.num_integrations ) {
             ib_idx = idx;
             break;
         }
@@ -126,14 +128,14 @@ void * worker(void * arg)
 
                 // Lower sideband requires a + fft_len to start grabbing from
                 // the second half of the FFT output buffer
-                bin_start = opts.fft_len - (center_freq - view_start)/opts.bin_width;
-                bin_end = opts.fft_len - (center_freq - view_end)/opts.bin_width + 1;
+                bin_start = opts.fft_len - lrint((center_freq - view_start)/opts.bin_width) + 1;
+                bin_end = opts.fft_len - lrint((center_freq - view_end)/opts.bin_width) + 2;
             } else {
                 view_start = MAX(center_freq + opts.bin_width, opts.start_freq);
                 view_end = MIN(center_freq + opts.fmbw2, opts.end_freq);
 
-                bin_start = (view_start - center_freq)/opts.bin_width;
-                bin_end = (view_end - center_freq)/opts.bin_width + 1;
+                bin_start = lrint((view_start - center_freq)/opts.bin_width) + 1;
+                bin_end = lrint((view_end - center_freq)/opts.bin_width) + 2;
             }
 
             // Convert the interesting bits of the spectrum to absolute values,
@@ -159,8 +161,9 @@ void * worker(void * arg)
 
                 //printf("FLUSHING BUFFER FOR %d\n", buffer.freq_idx);
                 // Start constructing csv_line
-                int len = sprintf(csv_line, "%lu, '', %u, %u, %.3f, %d, ",
-                                  buffer.scan_time.tv_sec, view_start,
+                int len = sprintf(csv_line, "%lu.%d, '', %u, %u, %.3f, %d, ",
+                                  buffer.scan_time.tv_sec,
+                                  buffer.scan_time.tv_usec/1000, view_start,
                                   view_end, opts.bin_width, opts.fft_len);
 
                 // Convert accumulated data to dB and shove into csv_line
@@ -219,7 +222,7 @@ void stop_worker_threads()
 {
     // Wait up to 10 seconds for FFT buffers to dry up
     while( !device_data.queued_buffers.empty() ) {
-        LOG("Waiting for %3d queued buffers to process...  \r", device_data.queued_buffers.size());
+        LOG("Waiting for %4lu queued buffers to process...  \r", device_data.queued_buffers.size());
         usleep(1*1000);
     }
     keep_running = false;

@@ -29,14 +29,23 @@ if [[ "$1" == "build" ]]; then
 	(cd build/bladeRF_power_debug; cmake ../../ $CMAKE_DFLAGS && make install)
 	(cd build/bladeRF_power_release; cmake ../../ $CMAKE_FLAGS && make install)
 
-	# Download heatmap.py
+	# Download heatmap and flatten.py
 	if [[ ! -f ./heatmap.py ]]; then
 		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/heatmap.py" -o ./heatmap.py
 		chmod +x ./heatmap.py
 	fi
 
+	if [[ ! -f ./flatten.py ]]; then
+		curl -L "https://raw.githubusercontent.com/keenerd/rtl-sdr-misc/master/heatmap/flatten.py" -o ./flatten.py
+		chmod +x flatten.py
+	fi
+
+	# link heatmap and flatten.py into our prefix
 	if [[ ! -f "$PREFIX/bin/heatmap.py" ]]; then
 		ln -s "$(pwd)/heatmap.py" "$PREFIX/bin/heatmap.py"
+	fi
+	if [[ ! -f "$PREFIX/bin/flatten.py" ]]; then
+		ln -s "$(pwd)/flatten.py" "$PREFIX/bin/flatten.py"
 	fi
 elif [[ "$1" == "clean" ]]; then
 	if [[ "$PREFIX" == "$(pwd)/prefix" ]]; then

@@ -129,18 +129,25 @@ void plan_frequencies(unsigned int start_freq, unsigned int end_freq,
     if( start_freq - bin_width >= BLADERF_FREQUENCY_MIN ) {
         // Put freqs[0] just below start_freq if we are not already at the
         // minimum frequency, and thus unable to tune below start_freq
-        opts.freqs[0] = start_freq - bin_width;
+        opts.freqs[0] = start_freq - (unsigned int)bin_width;
         opts.first_freq_lower_sideband = false;
     } else {
         // Otherwise, put center_freq just above start_freq + bandwidth/2 and
         // capture the lower sideband of this view
-        opts.freqs[0] = start_freq + fmbw2;
+        opts.freqs[0] = start_freq + (unsigned int)fmbw2;
         opts.first_freq_lower_sideband = true;
     }
 
     // Fill in the rest of the center frequencies
     for( int idx=1; idx < opts.num_freqs; ++idx )
-        opts.freqs[idx] = start_freq - bin_width + idx*fmbw2;
+        opts.freqs[idx] = start_freq - ((unsigned int)bin_width) + idx*((unsigned int)fmbw2);
+
+    if( opts.verbosity > 1 ) {
+        LOG("Frequency table:\n");
+        for( int idx=0; idx < opts.num_freqs; ++idx ) {
+            LOG("  Freq[%d]: %uHz\n", idx, opts.freqs[idx]);
+        }
+    }
 }
 
 

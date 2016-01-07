@@ -32,6 +32,8 @@ void print_status_line(unsigned short freq_idx)
     // Quantize spectrum into STATUS_LINE_BINS bins
     float bin_width = (opts.end_freq - opts.start_freq)/STATUS_LINE_BINS;
     int center_idx = lrint((opts.freqs[freq_idx] - opts.start_freq)/bin_width);
+    if( !opts.first_freq_lower_sideband && freq_idx == 0 )
+        center_idx = 0;
     int bandwidth = (int)opts.fmbw2/bin_width;
 
     for( int idx = 1; idx <= STATUS_LINE_BINS; idx++ ) {
@@ -80,8 +82,9 @@ int main(int argc, char ** argv)
     if( !open_device() )
         return 1;
 
-    // Setup quicktuning
-    //calibrate_quicktune();
+    // Setup quicktuning information so as to
+    if( !calibrate_quicktune() )
+        return 1;
 
     // Start worker threads
     start_worker_threads();
@@ -90,7 +93,6 @@ int main(int argc, char ** argv)
     struct sigaction act;
     act.sa_handler = sigint_handler;
     sigaction(SIGINT, &act, &old_sigint_action);
-
 
     // Begin scanning loop
     timeval tv_start, tv_freq, tv_status, tv;
@@ -128,14 +130,28 @@ int main(int argc, char ** argv)
 
         // Receive buffers of data
         unsigned int num_buffs;
-        uint16_t * buffer = receive_buffers(integration_idx, &num_buffs);
+        int16_t * buffer = receive_buffers(integration_idx, &num_buffs);
 
         // If we actually got data, send it off to the worker queue
         if( buffer != NULL ) {
+            static int already_written = 0;
+            for( int idx=0; idx<num_buffs; ++idx ) {
+                char tmp[20];
+                sprintf(tmp, "temporal_%03d.csv", already_written);
+                FILE * f = fopen(tmp, "w");
+                for( int idx = 0; idx < 2*opts.fft_len - 1; ++idx ) {
+                    fprintf(f, "%.3f, ", buffer[idx]/2048.0);
+                }
+                fprintf(f, "%.3f", buffer[2*opts.fft_len-1]/2048.0);
+                fclose(f);
+                already_written++;
+            }
+
             // We may have multiple buffers of data here.  We are guaranteed
             // that we will not wrap around on integrations though.
             pthread_mutex_lock(&device_data.queued_mutex);
             for( int idx=0; idx<num_buffs; ++idx ) {
+                LOG("SUBMITTING %d.%d\n", freq_idx, integration_idx);
                 struct data_capture blah = {
                     buffer + idx*2*opts.fft_len,
                     freq_idx,
@@ -143,15 +159,17 @@ int main(int argc, char ** argv)
                     tv_freq
                 };
                 device_data.queued_buffers.push(blah);
+
+                // That's another buffer done for the integration
+                integration_idx = (integration_idx+1)%opts.num_integrations;
             }
             pthread_mutex_unlock(&device_data.queued_mutex);
 
-            // That's another buffer done for the integration
-            integration_idx = (integration_idx+num_buffs)%opts.num_integrations;
-
             // Move freq_idx if we're done with all the integrations
-            if( integration_idx == 0 )
+            if( integration_idx == 0 ) {
+                LOG("Bumping freq_idx forward from %d to %d\n", freq_idx, (freq_idx + 1)%opts.num_freqs);
                 freq_idx = (freq_idx + 1)%opts.num_freqs;
+            }
         }
     }
 

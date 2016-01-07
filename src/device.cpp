@@ -2,12 +2,16 @@
 #include "device.h"
 #include "options.h"
 #include "util.h"
+#include <stdlib.h>
 
 struct device_data_struct device_data;
 
 bool open_device(void)
 {
     int status;
+
+    // Initialize everything in device_data to zero
+    memset(&device_data, 0, sizeof(struct device_data_struct));
 
     LOG("Opening and initializing device...\n");
     status = bladerf_open(&device_data.dev, opts.devstr);
@@ -117,22 +121,24 @@ void close_device(void)
 
     // Deinitialize and free resources
     bladerf_close(device_data.dev);
+    free(device_data.qtunes);
     LOG(".Done!\n");
 }
 
 
-void schedule_tuning(unsigned short freq_idx)
+void schedule_tuning(unsigned short idx)
 {
     // Timestamp that next buffer will arrive at; let's retune before then.
-    uint64_t next_time = device_data.last_buffer_timestamp + opts.fft_len;
+    uint64_t tune_time = device_data.last_buffer_timestamp +
+                         opts.num_integrations*opts.fft_len;
 
     int status = bladerf_schedule_retune(device_data.dev, BLADERF_MODULE_RX,
-                                         next_time, opts.freqs[freq_idx], NULL);
+                                         tune_time, 0, &device_data.qtunes[idx]);
     if( status != 0 ) {
         char str[9];
-        double2str_suffix(str, opts.freqs[freq_idx], freq_suffixes, NUM_FREQ_SUFFIXES);
+        double2str_suffix(str, opts.freqs[idx], freq_suffixes, NUM_FREQ_SUFFIXES);
         ERROR("bladerf_schedule_retune(dev, rx, %llu, %s, NULL) failed: %s\n",
-              next_time, str, bladerf_strerror(status));
+              tune_time, str, bladerf_strerror(status));
     }
 }
 
@@ -143,7 +149,7 @@ void schedule_tuning(unsigned short freq_idx)
  depending on how many integrations are needed combined with how large each fft
  buffer is.
 */
-uint16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
+int16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
 {
     // Our metadata struct to instruct libbladerf on when it should receive data
     int status;
@@ -152,7 +158,7 @@ uint16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
 
     // How many buffers will we capture in one go here?  There is a maximum size
     // we will capture at once, arbitrarily chosen to be 100MB worth of data
-    int max_num_buffs = MAX_CAPTURE_BUFF_SIZE/(sizeof(uint16_t)*2*opts.fft_len);
+    int max_num_buffs = MAX_CAPTURE_BUFF_SIZE/(sizeof(int16_t)*2*opts.fft_len);
     int num_buffs = MIN(opts.num_integrations - integration_idx, max_num_buffs);
     *ret_buffs = num_buffs;
 
@@ -160,8 +166,8 @@ uint16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
     meta.timestamp = device_data.last_buffer_timestamp + num_buffs*opts.fft_len;
 
     // Allocate space for our incoming data
-    unsigned int data_len = sizeof(uint16_t)*2*num_buffs*opts.fft_len;
-    uint16_t * data = (uint16_t *) malloc(data_len);
+    unsigned int data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
+    int16_t * data = (int16_t *) malloc(data_len);
 
     // Actually receive the data
     status = bladerf_sync_rx(device_data.dev, data, num_buffs*opts.fft_len,
@@ -175,4 +181,41 @@ uint16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
         return NULL;
     }
     return data;
+}
+
+bool calibrate_quicktune(void)
+{
+    // Allocate qtunes, if it does not already exist
+    int status;
+    if( device_data.qtunes == NULL ) {
+        unsigned int qtune_size = sizeof(bladerf_quick_tune)*opts.num_freqs;
+        device_data.qtunes = (bladerf_quick_tune *) malloc(qtune_size);
+    }
+
+    LOG("Calibrating quick tune parameters...\n");
+    for( int idx = 0; idx < opts.num_freqs; idx++) {
+        unsigned int f = opts.freqs[idx];
+
+        // Print out frequencies if we are verbose enough
+        char str[9];
+        double2str_suffix(str, f, freq_suffixes, NUM_FREQ_SUFFIXES);
+        INFO("  [%d] Frequency %sHz\n", idx, str);
+
+        // Set the frequency
+        status = bladerf_set_frequency(device_data.dev, BLADERF_MODULE_RX, f);
+        if (status != 0) {
+            ERROR("Couldn't tune to %sHz: %s\n", str, bladerf_strerror(status));
+            return false;
+        }
+
+        // Get the quicktune magic
+        status = bladerf_get_quick_tune(device_data.dev, BLADERF_MODULE_RX,
+                                        &device_data.qtunes[idx]);
+        if (status != 0) {
+            ERROR("Couldn't get quick tune data for %sHz: %s\n",
+                  str, bladerf_strerror(status));
+            return false;
+        }
+    }
+    return true;
 }

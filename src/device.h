@@ -5,7 +5,7 @@
 #include <pthread.h>
 
 struct data_capture {
-    uint16_t * data;
+    int16_t * data;
     unsigned short freq_idx;
     unsigned int integration_idx;
     struct timeval scan_time;
@@ -21,6 +21,10 @@ struct device_data_struct {
 
     // Timestamp next buffer will arrive, used for scheduling retuning/reception
     uint64_t last_buffer_timestamp;
+
+    // quick tune data calibrated by calibrate_quicktune() and used from within
+    // schedule_tuning() to scan through opts.freqs
+    struct bladerf_quick_tune * qtunes;
 };
 extern struct device_data_struct device_data;
 
@@ -28,6 +32,5 @@ bool open_device(void);
 void close_device(void);
 
 void schedule_tuning(unsigned short freq_idx);
-uint16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs);
-
-void calibrate_quicktune(void);
+int16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs);
+bool calibrate_quicktune(void);
