@@ -5,7 +5,7 @@ CMAKE_DFLAGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Debug"
 CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release"
 mkdir -p "$PREFIX"
 
-if [[ "$1" == "build" ]]; then
+if [[ "$1" == "build" ]] || [[ "$1" == "build/" ]]; then
 	echo "Installing into $PREFIX..."
 
 	# Install libbladeRF from source
