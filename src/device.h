@@ -31,6 +31,7 @@ extern struct device_data_struct device_data;
 bool open_device(void);
 void close_device(void);
 
-void schedule_tuning(unsigned short freq_idx);
-int16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs);
+void schedule_tuning(unsigned short idx, uint64_t timestamp);
+int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
+                         unsigned int *ret_buffs);
 bool calibrate_quicktune(void);

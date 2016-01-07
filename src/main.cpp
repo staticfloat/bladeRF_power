@@ -82,7 +82,7 @@ int main(int argc, char ** argv)
     if( !open_device() )
         return 1;
 
-    // Setup quicktuning information so as to
+    // Setup quicktuning information so as to make tuning quick and easy
     if( !calibrate_quicktune() )
         return 1;
 
@@ -116,24 +116,21 @@ int main(int argc, char ** argv)
             }
         }
 
-
         // Update status_line 10 times a second
         if( msdiff(tv, tv_status) > 100 ) {
             print_status_line(freq_idx);
         }
 
-        // If this is our last buffer to capture for this frequency, schedule a
-        // tuning for when we are done receiving data for the current buffer
-        // so that the next buffer arrives tuned to the next frequency.
-        if( integration_idx == opts.num_integrations - 1 )
-            schedule_tuning(freq_idx);
-
         // Receive buffers of data
         unsigned int num_buffs;
-        int16_t * buffer = receive_buffers(integration_idx, &num_buffs);
+        int16_t * buffer = receive_buffers(freq_idx, integration_idx, &num_buffs);
 
         // If we actually got data, send it off to the worker queue
         if( buffer != NULL ) {
+            // BEGIN DEBUGGING CODE
+            // Use this to write out each FFT analysis buffer to a .csv file,
+            // analyze with "temporal.py" in the top level of this repository.
+            /*
             static int already_written = 0;
             for( int idx=0; idx<num_buffs; ++idx ) {
                 char tmp[20];
@@ -146,12 +143,14 @@ int main(int argc, char ** argv)
                 fclose(f);
                 already_written++;
             }
+            */
+            // END DEBUGGING CODE
 
             // We may have multiple buffers of data here.  We are guaranteed
             // that we will not wrap around on integrations though.
             pthread_mutex_lock(&device_data.queued_mutex);
             for( int idx=0; idx<num_buffs; ++idx ) {
-                LOG("SUBMITTING %d.%d\n", freq_idx, integration_idx);
+                INFO("SUBMITTING %d.%d\n", freq_idx, integration_idx);
                 struct data_capture blah = {
                     buffer + idx*2*opts.fft_len,
                     freq_idx,
@@ -167,7 +166,7 @@ int main(int argc, char ** argv)
 
             // Move freq_idx if we're done with all the integrations
             if( integration_idx == 0 ) {
-                LOG("Bumping freq_idx forward from %d to %d\n", freq_idx, (freq_idx + 1)%opts.num_freqs);
+                INFO("Bumping freq_idx forward from %d to %d\n", freq_idx, (freq_idx + 1)%opts.num_freqs);
                 freq_idx = (freq_idx + 1)%opts.num_freqs;
             }
         }

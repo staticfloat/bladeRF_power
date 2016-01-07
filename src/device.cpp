@@ -126,30 +126,27 @@ void close_device(void)
 }
 
 
-void schedule_tuning(unsigned short idx)
+void schedule_tuning(unsigned short idx, uint64_t timestamp)
 {
-    // Timestamp that next buffer will arrive at; let's retune before then.
-    uint64_t tune_time = device_data.last_buffer_timestamp +
-                         opts.num_integrations*opts.fft_len;
-
     int status = bladerf_schedule_retune(device_data.dev, BLADERF_MODULE_RX,
-                                         tune_time, 0, &device_data.qtunes[idx]);
+                                         timestamp, 0, &device_data.qtunes[idx]);
     if( status != 0 ) {
         char str[9];
         double2str_suffix(str, opts.freqs[idx], freq_suffixes, NUM_FREQ_SUFFIXES);
         ERROR("bladerf_schedule_retune(dev, rx, %llu, %s, NULL) failed: %s\n",
-              tune_time, str, bladerf_strerror(status));
+              timestamp, str, bladerf_strerror(status));
     }
 }
 
-
+// Arbitrary maximum amount of data we will capture at once, limited to 100MB
 #define MAX_CAPTURE_BUFF_SIZE (100*1024*1024)
 /*
  Receives at least one (and possibly multiple) buffers from the bladeRF, all
  depending on how many integrations are needed combined with how large each fft
  buffer is.
 */
-int16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
+int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
+                         unsigned int *ret_buffs)
 {
     // Our metadata struct to instruct libbladerf on when it should receive data
     int status;
@@ -158,21 +155,32 @@ int16_t* receive_buffers(unsigned int integration_idx, unsigned int *ret_buffs)
 
     // How many buffers will we capture in one go here?  There is a maximum size
     // we will capture at once, arbitrarily chosen to be 100MB worth of data
-    int max_num_buffs = MAX_CAPTURE_BUFF_SIZE/(sizeof(int16_t)*2*opts.fft_len);
-    int num_buffs = MIN(opts.num_integrations - integration_idx, max_num_buffs);
+    uint32_t buff_size = sizeof(int16_t)*2*opts.fft_len;
+    uint32_t max_buffs = MAX(MAX_CAPTURE_BUFF_SIZE/buff_size, 1);
+    uint32_t num_buffs = MIN(opts.num_integrations - integration_idx, max_buffs);
     *ret_buffs = num_buffs;
 
     // Calculate timestamp at which point this data will be ready
     meta.timestamp = device_data.last_buffer_timestamp + num_buffs*opts.fft_len;
 
+    // If this is our last buffer to capture for this frequency, schedule a
+    // tuning for when we are done receiving data for the current buffer
+    // so that the buffer after the one we are about to receive will be tuned
+    // to the next frequency by the time it's ready to be received.
+    if( num_buffs == opts.num_integrations - integration_idx ) {
+        schedule_tuning(freq_idx, meta.timestamp + 1);
+    }
+
     // Allocate space for our incoming data
-    unsigned int data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
+    uint32_t data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
     int16_t * data = (int16_t *) malloc(data_len);
 
     // Actually receive the data
     status = bladerf_sync_rx(device_data.dev, data, num_buffs*opts.fft_len,
                              &meta, opts.timeout_ms);
-    device_data.last_buffer_timestamp = meta.timestamp;
+
+    // Record meta.timestamp + 1ms so that we skip over tuning times.
+    device_data.last_buffer_timestamp = meta.timestamp + opts.samplerate/1000;
 
     if( status != 0 ) {
         ERROR("bladerf_sync_rx(dev, buffer, %d, meta, %d) failed: %s\n",
