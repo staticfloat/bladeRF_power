@@ -141,13 +141,6 @@ void plan_frequencies(unsigned int start_freq, unsigned int end_freq,
     // Fill in the rest of the center frequencies
     for( int idx=1; idx < opts.num_freqs; ++idx )
         opts.freqs[idx] = start_freq - ((unsigned int)bin_width) + idx*((unsigned int)fmbw2);
-
-    if( opts.verbosity > 1 ) {
-        LOG("Frequency table:\n");
-        for( int idx=0; idx < opts.num_freqs; ++idx ) {
-            LOG("  Freq[%d]: %uHz\n", idx, opts.freqs[idx]);
-        }
-    }
 }
 
 

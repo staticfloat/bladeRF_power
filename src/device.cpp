@@ -201,6 +201,7 @@ bool calibrate_quicktune(void)
     }
 
     LOG("Calibrating quick tune parameters...\n");
+    INFO("Frequency table:\n");
     for( int idx = 0; idx < opts.num_freqs; idx++) {
         unsigned int f = opts.freqs[idx];
 
