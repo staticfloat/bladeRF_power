@@ -137,65 +137,11 @@ int main(int argc, char ** argv)
             tv_status = tv;
         }
 
-        // Receive buffers of data
+        // Receives buffers of data, submits them to FFT workers, moves freq_idx
+        // and integration_idx forward if need be, and returns false if fails
         unsigned int num_buffs;
-        int16_t * buffer = receive_buffers(freq_idx, integration_idx, &num_buffs);
-
-        // If we actually got data, send it off to the worker queue
-        if( buffer != NULL ) {
-            // Reset failure counter
+        if( receive_and_submit_buffers(&freq_idx, &integration_idx, tv_freq) ) {
             failures_in_a_row = 0;
-
-            // BEGIN DEBUGGING CODE
-            // Use this to write out each FFT analysis buffer to a .csv file,
-            // analyze with "temporal.py" in the top level of this repository.
-            /*
-            static int already_written = 0;
-            for( int idx=0; idx<num_buffs; ++idx ) {
-                char tmp[20];
-                sprintf(tmp, "temporal_%03d.csv", already_written);
-                FILE * f = fopen(tmp, "w");
-                for( int idx = 0; idx < 2*opts.fft_len - 1; ++idx ) {
-                    fprintf(f, "%.3f, ", buffer[idx]/2048.0);
-                }
-                fprintf(f, "%.3f", buffer[2*opts.fft_len-1]/2048.0);
-                fclose(f);
-                already_written++;
-            }
-            */
-            // END DEBUGGING CODE
-
-            // We may have multiple buffers of data here.  We are guaranteed
-            // that we will not wrap around on integrations though.
-            pthread_mutex_lock(&device_data.queued_mutex);
-            for( int idx=0; idx<num_buffs; ++idx ) {
-                INFO("SUBMITTING %d.%d\n", freq_idx, integration_idx);
-                struct data_capture blah = {
-                    buffer + idx*2*opts.fft_len,
-                    freq_idx,
-                    integration_idx,
-                    tv_freq,
-                    idx == 0
-                };
-                device_data.queued_buffers.push(blah);
-
-                // That's another buffer done for the integration
-                integration_idx = (integration_idx+1)%opts.num_integrations;
-            }
-            pthread_mutex_unlock(&device_data.queued_mutex);
-
-            // Recalibrate quicktune once per hour
-            if( msdiff(tv, tv_tune) > 60*60*1000 ) {
-                LOG("Recalibrating quicktune parameters...\n");
-                calibrate_quicktune();
-                tv_tune = tv;
-            }
-
-            // Move freq_idx if we're done with all the integrations
-            if( integration_idx == 0 ) {
-                INFO("Bumping freq_idx forward from %d to %d\n", freq_idx, (freq_idx + 1)%opts.num_freqs);
-                freq_idx = (freq_idx + 1)%opts.num_freqs;
-            }
         } else {
             failures_in_a_row++;
             if( failures_in_a_row > 5 ) {
@@ -206,6 +152,13 @@ int main(int argc, char ** argv)
                 calibrate_quicktune();
                 failures_in_a_row = 0;
             }
+        }
+
+        // Recalibrate quicktune once per hour
+        if( msdiff(tv, tv_tune) > 60*60*1000 ) {
+            LOG("Recalibrating quicktune parameters...\n");
+            calibrate_quicktune();
+            tv_tune = tv;
         }
     }
 

@@ -20,13 +20,13 @@ bool open_device(void)
         goto out;
     }
 
-    status = bladerf_set_frequency(device_data.dev, BLADERF_MODULE_RX, opts.freqs[1]);
+    status = bladerf_set_frequency(device_data.dev, BLADERF_MODULE_RX, opts.freqs[0]);
     if( status != 0 ) {
-        ERROR("Failed to set RX frequency: %s\n", bladerf_strerror(status));
+        ERROR("Failed to set RX frequency %u: %s\n", opts.freqs[0], bladerf_strerror(status));
         goto out;
     } else {
         char str[9];
-        double2str_suffix(str, opts.freqs[1], freq_suffixes, NUM_FREQ_SUFFIXES);
+        double2str_suffix(str, opts.freqs[0], freq_suffixes, NUM_FREQ_SUFFIXES);
         INFO("  RX frequency: %sHz\n", str);
     }
 
@@ -140,13 +140,13 @@ void schedule_tuning(unsigned short idx, uint64_t timestamp)
 
 // Arbitrary maximum amount of data we will capture at once, limited to 100MB
 #define MAX_CAPTURE_BUFF_SIZE (100*1024*1024)
-/*
- Receives at least one (and possibly multiple) buffers from the bladeRF, all
- depending on how many integrations are needed combined with how large each fft
- buffer is.
-*/
-int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
-                         unsigned int *ret_buffs)
+
+// Receives at least one (and possibly multiple) buffers from the bladeRF, all
+// depending on how many integrations are needed combined with how large each
+// fft buffer is. Then submit the buffers to the worker threads for FFT'ing.
+bool receive_and_submit_buffers(unsigned short *freq_idx,
+                                unsigned int *integration_idx,
+                                struct timeval tv_freq)
 {
     // Our metadata struct to instruct libbladerf on when it should receive data
     int status;
@@ -157,8 +157,7 @@ int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
     // we will capture at once, arbitrarily chosen to be 100MB worth of data
     uint32_t buff_size = sizeof(int16_t)*2*opts.fft_len;
     uint32_t max_buffs = MAX(MAX_CAPTURE_BUFF_SIZE/buff_size, 1);
-    uint32_t num_buffs = MIN(opts.num_integrations - integration_idx, max_buffs);
-    *ret_buffs = num_buffs;
+    uint32_t num_buffs = MIN(opts.num_integrations - *integration_idx, max_buffs);
 
     // Calculate timestamp at which point this data will be ready
     meta.timestamp = device_data.last_buffer_timestamp + num_buffs*opts.fft_len;
@@ -167,15 +166,14 @@ int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
     // tuning for when we are done receiving data for the current buffer
     // so that the buffer after the one we are about to receive will be tuned
     // to the next frequency by the time it's ready to be received.
-    if( num_buffs == opts.num_integrations - integration_idx ) {
-        schedule_tuning(freq_idx, meta.timestamp + 1);
+    if( num_buffs == opts.num_integrations - *integration_idx ) {
+        *freq_idx = (*freq_idx + 1)%opts.num_freqs;
+        schedule_tuning(*freq_idx, meta.timestamp + 1);
     }
 
     // Allocate space for our incoming data
     uint32_t data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
     int16_t * data = (int16_t *) malloc(data_len);
-
-    uint64_t ts = meta.timestamp;
 
     // Actually receive the data
     status = bladerf_sync_rx(device_data.dev, data, num_buffs*opts.fft_len,
@@ -200,9 +198,48 @@ int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
                   num_buffs*opts.fft_len, opts.timeout_ms, bladerf_strerror(status));
         }
         free(data);
-        return NULL;
+        return false;
     }
-    return data;
+
+
+    // BEGIN DEBUGGING CODE
+    // Use this to write out each FFT analysis buffer to a .csv file,
+    // analyze with "temporal.py" in the top level of this repository.
+    /*
+    static int already_written = 0;
+    for( int idx=0; idx<num_buffs; ++idx ) {
+        char tmp[20];
+        sprintf(tmp, "temporal_%03d.csv", already_written);
+        FILE * f = fopen(tmp, "w");
+        for( int idx = 0; idx < 2*opts.fft_len - 1; ++idx ) {
+            fprintf(f, "%.3f, ", buffer[idx]/2048.0);
+        }
+        fprintf(f, "%.3f", buffer[2*opts.fft_len-1]/2048.0);
+        fclose(f);
+        already_written++;
+    }
+    */
+    // END DEBUGGING CODE
+
+    // We may have multiple buffers of data here.  We are guaranteed
+    // that we will not wrap around on integrations though.
+    pthread_mutex_lock(&device_data.queued_mutex);
+    for( int idx=0; idx<num_buffs; ++idx ) {
+        INFO("Submitting buffer %d.%d\n", *freq_idx, *integration_idx);
+        struct data_capture datacap = {
+            data + idx*2*opts.fft_len,
+            *freq_idx,
+            *integration_idx,
+            tv_freq,
+            idx == 0
+        };
+        device_data.queued_buffers.push(datacap);
+
+        // That's another buffer done for the integration
+        *integration_idx = (*integration_idx+1)%opts.num_integrations;
+    }
+    pthread_mutex_unlock(&device_data.queued_mutex);
+    return true;
 }
 
 bool calibrate_quicktune(void)
