@@ -168,7 +168,10 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
     // to the next frequency by the time it's ready to be received.
     if( num_buffs == opts.num_integrations - *integration_idx ) {
         *freq_idx = (*freq_idx + 1)%opts.num_freqs;
-        schedule_tuning(*freq_idx, meta.timestamp + 1);
+
+        // Only actually bother doing this if we have more than one frequency
+        if( opts.num_freqs > 1 )
+            schedule_tuning(*freq_idx, meta.timestamp + 1);
     }
 
     // Allocate space for our incoming data

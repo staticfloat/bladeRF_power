@@ -31,9 +31,9 @@ void print_status_line(unsigned short freq_idx, unsigned int ms_elapsed)
 
     // Quantize spectrum into STATUS_LINE_BINS bins
     float bin_width = (opts.end_freq - opts.start_freq)/STATUS_LINE_BINS;
-    int center_idx = lrint((opts.freqs[freq_idx] - opts.start_freq)/bin_width);
+    int center_idx = 1 + lrint((opts.freqs[freq_idx] - opts.start_freq)/bin_width);
     if( !opts.first_freq_lower_sideband && freq_idx == 0 )
-        center_idx = 0;
+        center_idx = 1;
     int bandwidth = (int)opts.fmbw2/bin_width;
 
     for( int idx = 1; idx <= STATUS_LINE_BINS; idx++ ) {
