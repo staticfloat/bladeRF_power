@@ -33,7 +33,7 @@ void usage()
     printf("  -V --version               Show version.\n");
     printf("  -v --verbose               Raise verbosity level (can be repeated)\n");
     printf("  -f --file=<outfile>        Write to file `outfile` instead of stdout\n");
-    printf("  -e --exit-timer=<et>       Set capture time (example: 5h23m2s) [default: 0]\n");
+    printf("  -e --exit-timer=<et>       Set capture time (examples: \"5h\", \"30m\") [default: 0]\n");
     printf("  -i --integration-time=<t>  Time to integrate over to reduce noise in FFT.\n");
     printf("                             Supports time suffixes, [default: bin_width/bandwidth]\n");
     printf("  -b --bandwidth=<bw>        Capture bandwidth [default: BLADERF_BANDWIDTH_MAX].\n");
