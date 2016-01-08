@@ -175,14 +175,25 @@ int16_t* receive_buffers(unsigned short freq_idx, unsigned int integration_idx,
     uint32_t data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
     int16_t * data = (int16_t *) malloc(data_len);
 
+    uint64_t ts = meta.timestamp;
+
     // Actually receive the data
     status = bladerf_sync_rx(device_data.dev, data, num_buffs*opts.fft_len,
                              &meta, opts.timeout_ms);
 
-    // Record meta.timestamp + 1ms so that we skip over tuning times.
-    device_data.last_buffer_timestamp = meta.timestamp; // + opts.samplerate/1000;
+    // Increment last_buffer_timestamp
+    device_data.last_buffer_timestamp = meta.timestamp;
 
     if( status != 0 ) {
+        // If our timestamp is off somehow, reset to the bladeRF's clock
+        if( status == BLADERF_ERR_TIME_PAST ) {
+            bladerf_get_timestamp(device_data.dev, BLADERF_MODULE_RX,
+                                  &device_data.last_buffer_timestamp);
+
+            // Also give ourselves some breathing room (1ms) to catch up
+            device_data.last_buffer_timestamp += opts.samplerate/1000;
+        }
+
         // Squelch BLADERF_ERR_TIME_PAST errors if we aren't in a verbose mood
         if( status != BLADERF_ERR_TIME_PAST || opts.verbosity >= 1 ) {
             ERROR("bladerf_sync_rx(dev, buffer, %d, meta, %d) failed: %s\n",
@@ -229,5 +240,10 @@ bool calibrate_quicktune(void)
             return false;
         }
     }
+
+    // This whole method is pretty much guaranteed to wreck our timing, so let's
+    // go ahead and reset our timestamps now.
+    bladerf_get_timestamp(device_data.dev, BLADERF_MODULE_RX,
+                          &device_data.last_buffer_timestamp);
     return true;
 }

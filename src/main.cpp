@@ -108,12 +108,14 @@ int main(int argc, char ** argv)
     sigaction(SIGINT, &act, &old_sigint_action);
 
     // Begin scanning loop
-    timeval tv_start, tv_freq, tv_status, tv;
+    timeval tv_start, tv_freq, tv_status, tv_tune, tv;
     gettimeofday(&tv_start, NULL);
     tv_status = tv_start;
+    tv_tune = tv_start;
 
     unsigned short freq_idx = 0;
     unsigned int integration_idx = 0;
+    unsigned int failures_in_a_row = 0;
     while( keep_running ) {
         // Always get current time
         gettimeofday(&tv, NULL);
@@ -130,7 +132,7 @@ int main(int argc, char ** argv)
         }
 
         // Update status_line a maximum of 20 times a second
-        if( msdiff(tv, tv_status) > 50 ) {
+        if( msdiff(tv, tv_status) >= 50 ) {
             print_status_line(freq_idx, msdiff(tv, tv_start));
             tv_status = tv;
         }
@@ -141,6 +143,9 @@ int main(int argc, char ** argv)
 
         // If we actually got data, send it off to the worker queue
         if( buffer != NULL ) {
+            // Reset failure counter
+            failures_in_a_row = 0;
+
             // BEGIN DEBUGGING CODE
             // Use this to write out each FFT analysis buffer to a .csv file,
             // analyze with "temporal.py" in the top level of this repository.
@@ -179,10 +184,27 @@ int main(int argc, char ** argv)
             }
             pthread_mutex_unlock(&device_data.queued_mutex);
 
+            // Recalibrate quicktune once per hour
+            if( msdiff(tv, tv_tune) > 60*60*1000 ) {
+                LOG("Recalibrating quicktune parameters...\n");
+                calibrate_quicktune();
+                tv_tune = tv;
+            }
+
             // Move freq_idx if we're done with all the integrations
             if( integration_idx == 0 ) {
                 INFO("Bumping freq_idx forward from %d to %d\n", freq_idx, (freq_idx + 1)%opts.num_freqs);
                 freq_idx = (freq_idx + 1)%opts.num_freqs;
+            }
+        } else {
+            failures_in_a_row++;
+            if( failures_in_a_row > 5 ) {
+                // If we've failed five times in a row, close the device and re-open
+                LOG("Failure threshold reached, closing and reopening device...\n");
+                close_device();
+                open_device();
+                calibrate_quicktune();
+                failures_in_a_row = 0;
             }
         }
     }
