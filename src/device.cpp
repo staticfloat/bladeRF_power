@@ -162,17 +162,20 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
     // Calculate timestamp at which point this data will be ready
     meta.timestamp = device_data.last_buffer_timestamp + num_buffs*opts.fft_len;
 
+    // BEGIN SCHEDULED_TUNING CODE
     // If this is our last buffer to capture for this frequency, schedule a
     // tuning for when we are done receiving data for the current buffer
     // so that the buffer after the one we are about to receive will be tuned
     // to the next frequency by the time it's ready to be received.
+    /*
     if( num_buffs == opts.num_integrations - *integration_idx ) {
         *freq_idx = (*freq_idx + 1)%opts.num_freqs;
 
         // Only actually bother doing this if we have more than one frequency
         if( opts.num_freqs > 1 )
             schedule_tuning(*freq_idx, meta.timestamp + 1);
-    }
+    }*/
+    // END SCHEDULED TUNING CODE
 
     // Allocate space for our incoming data
     uint32_t data_len = sizeof(int16_t)*2*num_buffs*opts.fft_len;
@@ -183,7 +186,7 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
                              &meta, opts.timeout_ms);
 
     // Increment last_buffer_timestamp
-    device_data.last_buffer_timestamp = meta.timestamp;
+    device_data.last_buffer_timestamp = meta.timestamp + opts.samplerate/1000;
 
     if( status != 0 ) {
         // If our timestamp is off somehow, reset to the bladeRF's clock
@@ -200,9 +203,33 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
             ERROR("bladerf_sync_rx(dev, buffer, %d, meta, %d) failed: %s\n",
                   num_buffs*opts.fft_len, opts.timeout_ms, bladerf_strerror(status));
         }
+
+        // BEGIN SCHEDULED TUNING CODE
+        /*
+        if( num_buffs == opts.num_integrations - *integration_idx ) {
+            // Did we bump freq_idx?  Welp, let's undo that now!
+            *freq_idx = (*freq_idx + (opts.num_freqs - 1))%opts.num_freqs;
+
+            // Only schedule a retuning back to the original frequency if we have
+            // more than one frequency to record from
+            if( opts.num_freqs > 1 )
+                schedule_tuning(*freq_idx, BLADERF_RETUNE_NOW);
+        }*/
+        // END SCHEDULED TUNING CODE
+
         free(data);
         return false;
     }
+
+    // BEGIN UNSCHEDULED TUNING CODE
+    if( num_buffs == opts.num_integrations - *integration_idx ) {
+        *freq_idx = (*freq_idx + 1)%opts.num_freqs;
+
+        // Only actually bother doing this if we have more than one frequency
+        if( opts.num_freqs > 1 )
+            schedule_tuning(*freq_idx, BLADERF_RETUNE_NOW);
+    }
+    // END UNSCHEDULED TUNING CODE
 
 
     // BEGIN DEBUGGING CODE

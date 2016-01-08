@@ -40,9 +40,9 @@ extern struct device_data_struct device_data;
 bool open_device(void);
 void close_device(void);
 
+bool calibrate_quicktune(void);
+
 void schedule_tuning(unsigned short idx, uint64_t timestamp);
 bool receive_and_submit_buffers(unsigned short *freq_idx,
                                 unsigned int *integration_idx,
                                 struct timeval tv_freq);
-
-bool calibrate_quicktune(void);

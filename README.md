@@ -12,3 +12,8 @@ TODO
 ====
 
 * Get larger frequency margins by calibrating and inverting antialiasing filter
+
+* Implement multiple DC-rejection techniques
+
+* Better thread synchronization in the event of many small buffers, as right now
+  thead synchronization doesn't let us

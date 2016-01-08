@@ -156,7 +156,6 @@ int main(int argc, char ** argv)
 
         // Recalibrate quicktune once per hour
         if( msdiff(tv, tv_tune) > 60*60*1000 ) {
-            LOG("Recalibrating quicktune parameters...\n");
             calibrate_quicktune();
             tv_tune = tv;
         }
