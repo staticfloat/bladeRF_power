@@ -87,6 +87,7 @@ void * worker(void * arg)
 {
     // Create FFT buffers, plans and string holders
     fftw_complex *data;
+    double *accum_data;
     fftw_plan plan;
 
     // Roughly the length of the maximum csv line we will construct
@@ -98,18 +99,11 @@ void * worker(void * arg)
     plan = fftw_plan_dft_1d(opts.fft_len, data, data, FFTW_FORWARD, FFTW_ESTIMATE);
     pthread_mutex_unlock(&fftw_mutex);
 
+    accum_data = (double *)malloc(sizeof(double)*opts.fft_len);
+
     while( keep_running ) {
         struct data_capture buffer;
         if( get_next_buffer(&buffer) ) {
-            // Transform data into fftw_complex
-            for( int idx=0; idx<opts.fft_len; ++idx ) {
-                data[idx][0] = buffer.data[2*idx+0]/2048.0 * opts.window[idx];
-                data[idx][1] = buffer.data[2*idx+1]/2048.0 * opts.window[idx];
-            }
-
-            // Take FFT of data, "data" now holds the DFT of buffer.data
-            fftw_execute(plan);
-
             // We're going to need to find the following pieces of Information
             // to write out a complete csv line.  First off, the start and end
             // of the current "view" of frequency:
@@ -138,28 +132,46 @@ void * worker(void * arg)
                 bin_end = lrint((view_end - center_freq)/opts.bin_width) + 2;
             }
 
-            // Convert the interesting bits of the spectrum to absolute values,
-            // store the absolute values into the real part of "data".
-            for( int idx = bin_start; idx < bin_end; ++idx )
-                data[idx][0] = abs(data[idx]);
+            // Calculate the total number of bins we're keeping
+            unsigned int num_bins = bin_end - bin_start;
+
+            // For each integration held within the data, take the db(abs(FFT))
+            // and accumulate into accum_data
+            for( int int_idx=0; int_idx < buffer.num_integrations; int_idx++ ) {
+                for( int idx=0; idx<opts.fft_len; ++idx ) {
+                    data[idx][0] = buffer.data[2*idx+0] * opts.window[idx]/2048;
+                    data[idx][1] = buffer.data[2*idx+1] * opts.window[idx]/2048;
+                }
+
+                // Take FFT; "data" now holds the DFT of buffer.data
+                fftw_execute(plan);
+
+                // Convert the interesting bits of the spectrum to absolute
+                // values, accumulate (copy if uninitialized) into accum_data.
+                if( int_idx == 0 ) {
+                    for( int idx = 0; idx < num_bins; ++idx )
+                        accum_data[idx]  = abs(data[bin_start + idx]);
+                } else {
+                    for( int idx = 0; idx < num_bins; ++idx )
+                        accum_data[idx] += abs(data[bin_start + idx]);
+                }
+            }
 
             // Add this buffer to integration_buffers
-            unsigned int num_bins = bin_end - bin_start;
             pthread_mutex_lock(&integration_mutex);
             struct integration_buffer * ib = get_integration_buffer(buffer.freq_idx, num_bins);
 
             // Accumulate the interesting bits of the spectrum into ib->data
             for( int idx = 0; idx < num_bins; ++idx )
-                ib->data[idx] += data[bin_start + idx][0];
+                ib->data[idx] += accum_data[idx];
 
-            // Increment the number of integrations, and cleanup if we are ready!
-            ib->num_integrations++;
+            // Bump up the number of integrations, and cleanup if we are ready!
+            ib->num_integrations += buffer.num_integrations;
             if( ib->num_integrations >= opts.num_integrations ) {
                 // Since we're cleaning up, we know that nobody else is messing
                 // with this integration buffer, so we release the lock here
                 pthread_mutex_unlock(&integration_mutex);
 
-                //printf("FLUSHING BUFFER FOR %d\n", buffer.freq_idx);
                 // Start constructing csv_line
                 int len = sprintf(csv_line, "%lu.%d, '', %u, %u, %.3f, %d, ",
                                   buffer.scan_time.tv_sec,
@@ -181,7 +193,8 @@ void * worker(void * arg)
 
                 // Cleanup integration_buffer, re-obtaining the mutex for this.
                 pthread_mutex_lock(&integration_mutex);
-                #define DEL(v, x) v.erase(std::remove(v.begin(), v.end(), x), v.end())
+                #define REMOVE(v, x) std::remove(v.begin(), v.end(), x)
+                #define DEL(v, x) v.erase(REMOVE(v, x), v.end())
                 DEL(integration_buffers, ib);
                 pthread_mutex_unlock(&integration_mutex);
 
@@ -190,8 +203,8 @@ void * worker(void * arg)
             } else
                 pthread_mutex_unlock(&integration_mutex);
 
-            if( buffer.freeable )
-                free(buffer.data);
+            // Always free buffer data!
+            free(buffer.data);
         } else {
             // Sleep a little if we didn't have anything to process, waiting for
             // the next bit of data, so that we're not casually burning the CPU

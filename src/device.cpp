@@ -221,16 +221,6 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
         return false;
     }
 
-    // BEGIN UNSCHEDULED TUNING CODE
-    if( num_buffs == opts.num_integrations - *integration_idx ) {
-        *freq_idx = (*freq_idx + 1)%opts.num_freqs;
-
-        // Only actually bother doing this if we have more than one frequency
-        if( opts.num_freqs > 1 )
-            schedule_tuning(*freq_idx, BLADERF_RETUNE_NOW);
-    }
-    // END UNSCHEDULED TUNING CODE
-
 
     // BEGIN DEBUGGING CODE
     // Use this to write out each FFT analysis buffer to a .csv file,
@@ -254,21 +244,39 @@ bool receive_and_submit_buffers(unsigned short *freq_idx,
     // We may have multiple buffers of data here.  We are guaranteed
     // that we will not wrap around on integrations though.
     pthread_mutex_lock(&device_data.queued_mutex);
-    for( int idx=0; idx<num_buffs; ++idx ) {
+    if( num_buffs > 1 ) {
+        INFO("Submitting buffers %d.%d-%d\n", *freq_idx, *integration_idx,
+                                              *integration_idx + num_buffs);
+    } else {
         INFO("Submitting buffer %d.%d\n", *freq_idx, *integration_idx);
-        struct data_capture datacap = {
-            data + idx*2*opts.fft_len,
-            *freq_idx,
-            *integration_idx,
-            tv_freq,
-            idx == 0
-        };
-        device_data.queued_buffers.push(datacap);
-
-        // That's another buffer done for the integration
-        *integration_idx = (*integration_idx+1)%opts.num_integrations;
     }
+
+    // Send this buffer off to the salt mines
+    struct data_capture datacap = {
+        data,
+        *freq_idx,
+        *integration_idx,
+        num_buffs,
+        tv_freq
+    };
+    device_data.queued_buffers.push(datacap);
+
+    // Bump forward our integration index
+    *integration_idx = (*integration_idx+num_buffs)%opts.num_integrations;
     pthread_mutex_unlock(&device_data.queued_mutex);
+
+
+    // BEGIN UNSCHEDULED TUNING CODE
+    // Did we finish all the integrations necessary for this frequency?
+    if( *integration_idx == 0 ) {
+        // If so, bump freq_idx forward
+        *freq_idx = (*freq_idx + 1)%opts.num_freqs;
+
+        // Only actually bother retuning if we have more than one frequency
+        if( opts.num_freqs > 1 )
+            schedule_tuning(*freq_idx, BLADERF_RETUNE_NOW);
+    }
+    // END UNSCHEDULED TUNING CODE
     return true;
 }
 

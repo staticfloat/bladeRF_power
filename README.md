@@ -15,5 +15,4 @@ TODO
 
 * Implement multiple DC-rejection techniques
 
-* Better thread synchronization in the event of many small buffers, as right now
-  thead synchronization doesn't let us
+* Write a proper README
