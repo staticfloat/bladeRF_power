@@ -21,7 +21,7 @@ void sigint_handler(int dummy)
 }
 
 #define STATUS_LINE_LEN     100
-#define STATUS_LINE_BINS    64
+#define STATUS_LINE_BINS    62
 void print_status_line(unsigned short freq_idx, unsigned int ms_elapsed)
 {
     char status_line[STATUS_LINE_LEN+1];
