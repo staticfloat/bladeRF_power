@@ -18,13 +18,20 @@ add_executable(bladeRF_power
 
 # Add libraries like FFTW
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake/modules)
-find_package( FFTW REQUIRED )
+find_package(FFTW REQUIRED)
 if ( FFTW_FOUND )
     include_directories( ${FFTW_INCLUDE_DIRS} )
     target_link_libraries( bladeRF_power ${FFTW_LIBRARIES} )
 else( FFTW_FOUND )
     error("FFTW not found!  Required to build bladeRF_power!")
 endif( FFTW_FOUND )
+
+find_package(Threads REQUIRED)
+if( Threads_FOUND )
+    target_link_libraries( bladeRF_power ${CMAKE_THREAD_LIBS_INIT} )
+else( Threads_FOUND )
+    error("pthreads not found!  Required to build bladeRF_power!")
+endif( Threads_FOUND )
 
 target_link_libraries(bladeRF_power bladeRF)
 

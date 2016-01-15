@@ -26,7 +26,7 @@ function install_libusb()
 	if [[ "$(uname -s)" == "Linux" ]]; then
 		if [[ ! -z "$(which apt-get)" ]]; then
 			aptget_install libusb-1.0-0-dev
-			aptget_install libusb-1.0-0
+			aptget_install libfftw3-dev
 			aptget_install build-essential
 			aptget_install cmake
 			aptget_install libncurses5-dev
@@ -42,6 +42,7 @@ function install_libusb()
 		if [[ ! -z "$(which brew)" ]]; then
 			brew_install pkg-config
 			brew_install libusb
+			brew_install fftw
 			brew_install git
 			brew_install libtecla
 			brew_install wget
