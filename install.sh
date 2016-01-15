@@ -12,9 +12,6 @@ if [[ "$1" == "build" ]] || [[ "$1" == "build/" ]]; then
 	if [[ ! -d bladeRF ]]; then
 		echo "Downloading bladeRF source..."
 		git clone https://github.com/Nuand/bladeRF.git
-
-		echo "Patching bladeRF source..."
-		(cd bladeRF; git apply ../conversions.h.patch)
 	fi
 	(cd bladeRF; git pull)
 
@@ -22,6 +19,7 @@ if [[ "$1" == "build" ]] || [[ "$1" == "build/" ]]; then
 	if [[ "$PREFIX" == "$(pwd)/prefix" ]]; then
 		rm -rf prefix
 	fi
+	mkdir -p "$PREFIX/bin"
 
 	# Build libbladeRF, if we need to
 	mkdir -p build/bladeRF
