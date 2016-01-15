@@ -10,6 +10,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <stdio.h>
+#include <algorithm>
 
 static pthread_t * threads;
 static pthread_mutex_t fftw_mutex = PTHREAD_MUTEX_INITIALIZER;
