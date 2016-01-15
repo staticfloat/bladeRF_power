@@ -3,6 +3,7 @@
 #include "options.h"
 #include "util.h"
 #include <stdlib.h>
+#include <string.h>
 
 struct device_data_struct device_data;
 

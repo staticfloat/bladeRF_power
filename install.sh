@@ -15,7 +15,7 @@ function brew_install()
 
 function aptget_install()
 {
-	if [[ "$(dpkg -s "$1" 2>/dev/null)" != "Status: install ok installed" ]]; then
+	if [[ "$(dpkg -s "$1" 2>/dev/null)" != *"Status: install ok installed"* ]]; then
 		echo "Running sudo apt-get install \"$1\"..."
 		sudo apt-get install "$1"
 	fi
