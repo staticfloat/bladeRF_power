@@ -152,7 +152,7 @@ void plan_frequencies(unsigned int start_freq, unsigned int end_freq,
 void parse_options(int argc, char ** argv)
 {
     // First thing we do is initialize the entire opts struct to zero
-    memset(&opts, sizeof(opts), 0);
+    memset(&opts, 0, sizeof(opts));
 
     // Declare some temporary variables
     bool ok;
