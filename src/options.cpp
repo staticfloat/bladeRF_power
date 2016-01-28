@@ -194,7 +194,7 @@ void parse_options(int argc, char ** argv)
                 opts.num_integrations = str2uint_suffix(optarg, 1, UINT_MAX, time_suffixes,
                                                         NUM_TIME_SUFFIXES, &ok);
                 if( !ok ) {
-                    ERROR("Invalid exit timer \"%s\"\n", optarg);
+                    ERROR("Invalid integration time \"%s\"\n", optarg);
                     ERROR("Valid values given in milliseconds (ex: \"60000\")");
                     ERROR("or, equivalently, with units: (ex: \"60s\" or \"1m\")\n");
                     exit(1);
@@ -205,7 +205,7 @@ void parse_options(int argc, char ** argv)
                                                   BLADERF_BANDWIDTH_MAX, freq_suffixes,
                                                   NUM_FREQ_SUFFIXES, &ok);
                 if( !ok ) {
-                    ERROR("Invalid bandwidth \"%s\"\n", optarg);
+                    ERROR("Invalid samplerate \"%s\"\n", optarg);
                     ERROR("Valid range: [%u, %u]\n", BLADERF_BANDWIDTH_MIN, BLADERF_BANDWIDTH_MAX);
                     exit(1);
                 }
