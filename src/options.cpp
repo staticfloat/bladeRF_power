@@ -44,9 +44,9 @@ void usage()
     printf("  -W --window-type=<wt>      Set temporal windowing function [default: hamming]\n");
     printf("  -g --lna-gain=<g>          Set LNA gain either as numeric dB value (0, %d, %d) or\n", BLADERF_LNA_GAIN_MID_DB, BLADERF_LNA_GAIN_MAX_DB);
     printf("                             as symbolic (bypass, min, max). [default: max]\n");
-    printf("  -o --rx-vga1=<g>           Set vga1 gain either as numeric dB value [%d...%d] or\n", BLADERF_RXVGA1_GAIN_MIN, BLADERF_RXVGA1_GAIN_MAX);
+    printf("  -o --rx-vga1=<g>           Set rxvga1 gain either as numeric dB value [%d...%d] or\n", BLADERF_RXVGA1_GAIN_MIN, BLADERF_RXVGA1_GAIN_MAX);
     printf("                             as symbolic (min, max).  [default: min]\n");
-    printf("  -o --rx-vga1=<g>           Set vga1 gain either as numeric dB value [%d...%d] or\n", BLADERF_RXVGA2_GAIN_MIN, BLADERF_RXVGA2_GAIN_MAX);
+    printf("  -w --rx-vga2=<g>           Set rxvga2 gain either as numeric dB value [%d...%d] or\n", BLADERF_RXVGA2_GAIN_MIN, BLADERF_RXVGA2_GAIN_MAX);
     printf("                             as symbolic (min, max).  [default: min]\n");
     printf("  -d --device=<d>            Device identifier [default: ]\n");
     printf("  -T --threads=<t>           Set number of worker threads [default: 2]\n");
