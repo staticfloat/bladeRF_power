@@ -38,7 +38,7 @@ const char * fixed_digits(double val, int num_digits)
 {
     static char out[10];
     char format[8];
-    int num_fractional_digits = MAX(num_digits - log10(val), 0);
+    int num_fractional_digits = MAX(num_digits - (int)log10(val), 0);
     sprintf(format, "%%.%df", num_fractional_digits);
     sprintf(out, format, val);
     return out;
